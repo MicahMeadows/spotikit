@@ -1,6 +1,6 @@
 name: spotikit
 description: "Flutter plugin for Spotify integration with Android App Remote and Web API support."
-version: 0.0.4
+version: 0.0.5
 homepage: "https://github.com/ArdaKoksall/spotikit"
 issue_tracker: "https://github.com/ArdaKoksall/spotikit"
 repository: https://github.com/ArdaKoksall/spotikit"
@@ -31,6 +31,3 @@ flutter:
         package: com.ardakoksal.spotikit
         pluginClass: SpotikitPlugin
 
-  assets:
-    - assets/aar/
-    - assets/source/
