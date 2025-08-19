@@ -4,8 +4,8 @@ import 'dart:io';
 import 'package:path/path.dart' as path;
 import 'package:path/path.dart' as p;
 
-const String kSpotifyAppRemoteAar = 'spotify-app-remote-release-0.8.0.aar';
-const String kSpotifyAuthStoreAar = 'spotify-auth-store-release-2.1.0.aar';
+const String kSpotifyAppRemoteAar = 'aar\\spotify-app-remote-release-0.8.0.aar';
+const String kSpotifyAuthStoreAar = 'aar\\spotify-auth-store-release-2.1.0.aar';
 
 void main(List<String> arguments) async {
   print('🎵 Initializing Spotikit for Android...\n');
@@ -59,8 +59,8 @@ Future<void> _setupSpotifyLibraries(Directory appDir) async {
   }
 
   // Copy AAR files
-  final appRemoteSource = getAssetFile('aar/$kSpotifyAppRemoteAar');
-  final authStoreSource = getAssetFile('aar/$kSpotifyAuthStoreAar');
+  final appRemoteSource = getPluginAsset(kSpotifyAppRemoteAar);
+  final authStoreSource = getPluginAsset(kSpotifyAuthStoreAar);
 
   final appRemoteDest = File(path.join(spotifyDir.path, kSpotifyAppRemoteAar));
   final authStoreDest = File(path.join(spotifyDir.path, kSpotifyAuthStoreAar));
@@ -266,7 +266,7 @@ Future<void> _setupMainActivity(Directory appDir, Directory projectDir) async {
 }
 
 Future<String> _generateMainActivity(String packageName) async {
-  final file = getAssetFile('source/main_activity.txt');
+  final file = getPluginAsset('source/main_activity.txt');
 
   final lines = await file.readAsLines();
 
@@ -277,13 +277,19 @@ Future<String> _generateMainActivity(String packageName) async {
   return lines.join('\n');
 }
 
-File getAssetFile(String relativePath) {
-  final scriptDir = File.fromUri(Platform.script).parent.path;
-  final filePath = p.join(scriptDir, 'assets', relativePath);
-  final file = File(filePath);
+File getPluginAsset(String relativePath) {
+  // Current running script folder
+  final scriptDir = File.fromUri(Platform.script).parent;
 
+  // Plugin root is one level up from bin/
+  final packageRoot = scriptDir.parent;
+
+  // Full path to asset
+  final assetPath = p.join(packageRoot.path, 'assets', relativePath);
+
+  final file = File(assetPath);
   if (!file.existsSync()) {
-    throw Exception('Asset not found: $filePath');
+    throw Exception('Asset not found: $assetPath');
   }
 
   return file;
