@@ -28,16 +28,10 @@ import org.json.JSONObject
 
 /** SpotikitPlugin */
 class SpotikitPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, PluginRegistry.ActivityResultListener {
-  // Companion object for constants
+  // Companion object for non-user-specific constants
   companion object {
-    private const val CHANNEL_NAME = "spotikit" // Matches the name in onAttachedToEngine
+    private const val CHANNEL_NAME = "spotikit"
     private val TAG = "SpotikitPlugin"
-
-    // TODO: These should be configured dynamically, perhaps via a method call from Flutter.
-    private const val CLIENT_ID = "X_USER_CLIENT_ID"
-    private const val REDIRECT_URI = "X_USER_REDIRECT_URI"
-    private const val CLIENT_SECRET = "X_USER_CLIENT_SECRET"
-    private const val SPOTIFY_SCOPE = "X_USER_SCOPE"
     private const val AUTH_REQUEST_CODE = 1337
 
     // --- SharedPreferences Keys ---
@@ -46,6 +40,12 @@ class SpotikitPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, PluginRe
     private const val KEY_REFRESH_TOKEN = "refresh_token"
     private const val KEY_TOKEN_EXPIRES_AT = "token_expires_at"
   }
+
+  // --- Runtime Configuration (set by 'initialize' method) ---
+  private var clientId: String? = null
+  private var redirectUri: String? = null
+  private var clientSecret: String? = null
+  private var scope: String? = null
 
   // Plugin components
   private lateinit var channel: MethodChannel
@@ -67,32 +67,26 @@ class SpotikitPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, PluginRe
   private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
   // ---------------------------------------------------------------------------------
-  // FlutterPlugin Lifecycle
+  // FlutterPlugin Lifecycle & Activity Handling (No changes here)
+  // ... (Your existing lifecycle methods are correct)
   // ---------------------------------------------------------------------------------
-
   override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
     context = flutterPluginBinding.applicationContext
     channel = MethodChannel(flutterPluginBinding.binaryMessenger, CHANNEL_NAME)
     channel.setMethodCallHandler(this)
-
-    // Initialize SharedPreferences and load any existing tokens
     sharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     loadTokensFromPrefs()
   }
 
   override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
     channel.setMethodCallHandler(null)
-    coroutineScope.cancel() // Cancel ongoing coroutines
-    disconnect(object : Result { // Gracefully disconnect
+    coroutineScope.cancel()
+    disconnect(object : Result {
       override fun success(result: Any?) { Log.d(TAG, "Disconnected on engine detach.") }
       override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {}
       override fun notImplemented() {}
     })
   }
-
-  // ---------------------------------------------------------------------------------
-  // ActivityAware Lifecycle
-  // ---------------------------------------------------------------------------------
 
   override fun onAttachedToActivity(binding: ActivityPluginBinding) {
     activity = binding.activity
@@ -101,26 +95,14 @@ class SpotikitPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, PluginRe
   }
 
   override fun onDetachedFromActivity() {
-    // Disconnect from Spotify when the activity is destroyed to avoid leaks
-    spotifyAppRemote?.let {
-      if (it.isConnected) SpotifyAppRemote.disconnect(it)
-    }
+    spotifyAppRemote?.let { if (it.isConnected) SpotifyAppRemote.disconnect(it) }
     activityBinding?.removeActivityResultListener(this)
     activity = null
     activityBinding = null
   }
 
-  override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
-    onAttachedToActivity(binding)
-  }
-
-  override fun onDetachedFromActivityForConfigChanges() {
-    onDetachedFromActivity()
-  }
-
-  // ---------------------------------------------------------------------------------
-  // ActivityResultListener
-  // ---------------------------------------------------------------------------------
+  override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) { onAttachedToActivity(binding) }
+  override fun onDetachedFromActivityForConfigChanges() { onDetachedFromActivity() }
 
   override fun onActivityResult(requestCode: Int, resultCode: Int, intent: Intent?): Boolean {
     if (requestCode == AUTH_REQUEST_CODE) {
@@ -139,17 +121,18 @@ class SpotikitPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, PluginRe
           channel.invokeMethod("spotifyAuthFailed", mapOf("error" to "cancelled"))
         }
       }
-      return true // We handled this result
+      return true
     }
-    return false // We did not handle this result
+    return false
   }
 
   // ---------------------------------------------------------------------------------
-  // MethodCallHandler
+  // MethodCallHandler - UPDATED
   // ---------------------------------------------------------------------------------
 
   override fun onMethodCall(call: MethodCall, result: Result) {
     when (call.method) {
+      "initialize" -> initialize(call, result)
       "connectToSpotify" -> connectToSpotify(result)
       "authenticateSpotify" -> authenticateSpotify(result)
       "getAccessToken" -> getAccessToken(result)
@@ -171,17 +154,38 @@ class SpotikitPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, PluginRe
   }
 
   // ---------------------------------------------------------------------------------
-  // Spotify Logic
+  // Spotify Logic - UPDATED with runtime config and safety checks
   // ---------------------------------------------------------------------------------
 
+  private fun initialize(call: MethodCall, result: Result) {
+    clientId = call.argument<String>("clientId")
+    redirectUri = call.argument<String>("redirectUri")
+    clientSecret = call.argument<String>("clientSecret")
+    scope = call.argument<String>("scope")
+
+    if (clientId != null && redirectUri != null && clientSecret != null && scope != null) {
+      Log.d(TAG, "SpotikitPlugin initialized successfully.")
+      result.success(true)
+    } else {
+      result.error("INITIALIZATION_FAILED", "Missing one or more configuration values.", null)
+    }
+  }
+
   private fun connectToSpotify(result: Result) {
+    val currentClientId = clientId
+    val currentRedirectUri = redirectUri
+    if (currentClientId == null || currentRedirectUri == null) {
+      result.error("NOT_INITIALIZED", "The plugin must be initialized before calling connectToSpotify.", null)
+      return
+    }
+
     if (spotifyAppRemote?.isConnected == true) {
       result.success("Already connected")
       return
     }
 
-    val connectionParams = ConnectionParams.Builder(CLIENT_ID)
-      .setRedirectUri(REDIRECT_URI)
+    val connectionParams = ConnectionParams.Builder(currentClientId)
+      .setRedirectUri(currentRedirectUri)
       .showAuthView(true)
       .build()
 
@@ -191,7 +195,6 @@ class SpotikitPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, PluginRe
         Log.d(TAG, "Spotify App Remote connected.")
         result.success("Connected")
       }
-
       override fun onFailure(throwable: Throwable) {
         Log.e(TAG, "Spotify connection failed: ${throwable.message}", throwable)
         result.error("CONNECTION_ERROR", "Could not connect to Spotify.", throwable.message)
@@ -201,18 +204,94 @@ class SpotikitPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, PluginRe
   }
 
   private fun authenticateSpotify(result: Result) {
+    val currentClientId = clientId
+    val currentRedirectUri = redirectUri
+    val currentScope = scope
+    if (currentClientId == null || currentRedirectUri == null || currentScope == null) {
+      result.error("NOT_INITIALIZED", "The plugin must be initialized before calling authenticateSpotify.", null)
+      return
+    }
+
     val currentActivity = activity
     if (currentActivity == null) {
       result.error("NO_ACTIVITY", "Cannot authenticate without a foreground activity.", null)
       return
     }
-    val request = AuthorizationRequest.Builder(CLIENT_ID, AuthorizationResponse.Type.CODE, REDIRECT_URI)
-      .setScopes(SPOTIFY_SCOPE.split(" ").toTypedArray())
+
+    val request = AuthorizationRequest.Builder(currentClientId, AuthorizationResponse.Type.CODE, currentRedirectUri)
+      .setScopes(currentScope.split(" ").toTypedArray())
       .build()
     AuthorizationClient.openLoginActivity(currentActivity, AUTH_REQUEST_CODE, request)
     result.success("Authentication flow started")
   }
 
+  // ========== Token Handling ==========
+
+  private fun exchangeCodeForTokens(code: String) {
+    val currentRedirectUri = redirectUri
+    if (currentRedirectUri == null) {
+      Log.e(TAG, "Cannot exchange code for tokens: plugin not initialized (missing redirect URI).")
+      return
+    }
+
+    coroutineScope.launch {
+      try {
+        val responseBody = makeTokenRequest(
+          FormBody.Builder()
+            .add("grant_type", "authorization_code")
+            .add("code", code)
+            .add("redirect_uri", currentRedirectUri)
+            .build()
+        )
+
+        if (responseBody != null) {
+          processTokenResponse(responseBody)
+          Log.d(TAG, "Successfully exchanged code for tokens.")
+          withContext(Dispatchers.Main) {
+            channel.invokeMethod("spotifyAuthSuccess", mapOf("accessToken" to accessToken))
+          }
+        } else {
+          throw Exception("Token exchange response was null or unsuccessful")
+        }
+      } catch (e: Exception) {
+        Log.e(TAG, "Error exchanging code for tokens", e)
+        withContext(Dispatchers.Main) {
+          channel.invokeMethod("spotifyAuthFailed", mapOf("error" to "token_exchange_failed", "message" to e.message))
+        }
+      }
+    }
+  }
+
+  private fun makeTokenRequest(formBody: FormBody): String? {
+    val currentClientId = clientId
+    val currentClientSecret = clientSecret
+    if (currentClientId == null || currentClientSecret == null) {
+      Log.e(TAG, "Cannot make token request: plugin not initialized (missing client ID or secret).")
+      return null // This will cause the calling function to throw an exception
+    }
+
+    val credentials = "$currentClientId:$currentClientSecret"
+    val encodedCredentials = Base64.encodeToString(credentials.toByteArray(), Base64.NO_WRAP)
+
+    val request = Request.Builder()
+      .url("https://accounts.spotify.com/api/token")
+      .addHeader("Authorization", "Basic $encodedCredentials")
+      .post(formBody)
+      .build()
+
+    httpClient.newCall(request).execute().use { response ->
+      if (!response.isSuccessful) {
+        Log.e(TAG, "Token request failed with code ${response.code}: ${response.body?.string()}")
+        return null
+      }
+      return response.body?.string()
+    }
+  }
+
+  // ---------------------------------------------------------------------------------
+  // No changes needed for the rest of the methods
+  // ... (Your other methods like getAccessToken, logout, play, pause, etc. are correct)
+  // ---------------------------------------------------------------------------------
   private fun getAccessToken(result: Result) {
     if (accessToken != null && System.currentTimeMillis() < tokenExpiresAt) {
       result.success(accessToken)
@@ -238,8 +317,6 @@ class SpotikitPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, PluginRe
       override fun notImplemented() { result.notImplemented() }
     })
   }
-
-  // ========== Playback Control ==========
 
   private fun play(spotifyUri: String, result: Result) {
     performActionIfConnected(result) { remote ->
@@ -312,37 +389,6 @@ class SpotikitPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, PluginRe
     } ?: result.success("Not connected, no action taken")
   }
 
-  // ========== Token Handling ==========
-
-  private fun exchangeCodeForTokens(code: String) {
-    coroutineScope.launch {
-      try {
-        val responseBody = makeTokenRequest(
-          FormBody.Builder()
-            .add("grant_type", "authorization_code")
-            .add("code", code)
-            .add("redirect_uri", REDIRECT_URI)
-            .build()
-        )
-
-        if (responseBody != null) {
-          processTokenResponse(responseBody)
-          Log.d(TAG, "Successfully exchanged code for tokens.")
-          withContext(Dispatchers.Main) {
-            channel.invokeMethod("spotifyAuthSuccess", mapOf("accessToken" to accessToken))
-          }
-        } else {
-          throw Exception("Token exchange response was null or unsuccessful")
-        }
-      } catch (e: Exception) {
-        Log.e(TAG, "Error exchanging code for tokens", e)
-        withContext(Dispatchers.Main) {
-          channel.invokeMethod("spotifyAuthFailed", mapOf("error" to "token_exchange_failed", "message" to e.message))
-        }
-      }
-    }
-  }
-
   private fun refreshToken(result: Result) {
     val currentRefreshToken = refreshToken
     if (currentRefreshToken == null) {
@@ -377,37 +423,14 @@ class SpotikitPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, PluginRe
     }
   }
 
-  private fun makeTokenRequest(formBody: FormBody): String? {
-    val credentials = "$CLIENT_ID:$CLIENT_SECRET"
-    val encodedCredentials = Base64.encodeToString(credentials.toByteArray(), Base64.NO_WRAP)
-
-    val request = Request.Builder()
-      .url("https://accounts.spotify.com/api/token")
-      .addHeader("Authorization", "Basic $encodedCredentials")
-      .post(formBody)
-      .build()
-
-    httpClient.newCall(request).execute().use { response ->
-      if (!response.isSuccessful) {
-        Log.e(TAG, "Token request failed with code ${response.code}: ${response.body?.string()}")
-        return null
-      }
-      return response.body?.string()
-    }
-  }
-
   private fun processTokenResponse(responseBody: String) {
     val jsonObject = JSONObject(responseBody)
     accessToken = jsonObject.getString("access_token")
-    // Spotify may not return a new refresh token. If it doesn't, keep the old one.
     refreshToken = jsonObject.optString("refresh_token", refreshToken)
     val expiresIn = jsonObject.getInt("expires_in")
     tokenExpiresAt = System.currentTimeMillis() + (expiresIn * 1000L)
-
     saveTokensToPrefs()
   }
-
-  // ========== Persistence & Helpers ==========
 
   private fun saveTokensToPrefs() {
     with(sharedPreferences.edit()) {
