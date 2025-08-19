@@ -47,6 +47,12 @@ android {
         minSdk = 21
     }
 
+    repositories {
+        flatDir {
+            dirs 'libs'
+        }
+    }
+
     dependencies {
         implementation(files("libs/spotify-app-remote-release-0.8.0.aar"))
         implementation(files("libs/spotify-auth-release-2.1.0.aar"))
@@ -57,15 +63,14 @@ android {
         testImplementation("org.mockito:mockito-core:5.0.0")
     }
 
-
     testOptions {
         unitTests.all {
             useJUnitPlatform()
 
             testLogging {
-               events "passed", "skipped", "failed", "standardOut", "standardError"
-               outputs.upToDateWhen {false}
-               showStandardStreams = true
+                events "passed", "skipped", "failed", "standardOut", "standardError"
+                outputs.upToDateWhen {false}
+                showStandardStreams = true
             }
         }
     }
