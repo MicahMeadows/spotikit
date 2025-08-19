@@ -2,6 +2,7 @@
 
 import 'dart:io';
 import 'package:path/path.dart' as path;
+import 'package:path/path.dart' as p;
 
 const String kSpotifyAppRemoteAar = 'spotify-app-remote-release-0.8.0.aar';
 const String kSpotifyAuthStoreAar = 'spotify-auth-store-release-2.1.0.aar';
@@ -57,33 +58,9 @@ Future<void> _setupSpotifyLibraries(Directory appDir) async {
     print('   Created android/app/spotify/ directory');
   }
 
-  // Find the plugin's assets directory
-  final pluginDir = _findPluginDirectory();
-  final pluginAarDir = Directory(path.join(pluginDir.path, 'assets', 'aar'));
-
-  Directory? sourceDir;
-
-  // Try to find plugin's assets/aar directory
-  if (pluginAarDir.existsSync() &&
-      File(
-        path.join(pluginAarDir.path, kSpotifyAppRemoteAar),
-      ).existsSync()) {
-    sourceDir = pluginAarDir;
-    print('   Found AAR files in plugin assets/aar directory');
-  } else {
-    print('   ⚠️  Warning: AAR files not found in plugin assets/aar directory');
-    print('   Searched in: ${pluginAarDir.path}');
-    print(
-      '   Please ensure the following files exist in the plugin assets/aar/:',
-    );
-    print('   - $kSpotifyAppRemoteAar');
-    print('   - $kSpotifyAuthStoreAar');
-    return;
-  }
-
   // Copy AAR files
-  final appRemoteSource = File(path.join(sourceDir.path, kSpotifyAppRemoteAar));
-  final authStoreSource = File(path.join(sourceDir.path, kSpotifyAuthStoreAar));
+  final appRemoteSource = getAssetFile('aar/$kSpotifyAppRemoteAar');
+  final authStoreSource = getAssetFile('aar/$kSpotifyAuthStoreAar');
 
   final appRemoteDest = File(path.join(spotifyDir.path, kSpotifyAppRemoteAar));
   final authStoreDest = File(path.join(spotifyDir.path, kSpotifyAuthStoreAar));
@@ -107,7 +84,7 @@ Future<void> _updateBuildGradle(Directory appDir) async {
     // Try .gradle extension
     final buildGradleGroovyFile = File(path.join(appDir.path, 'build.gradle'));
     if (!buildGradleGroovyFile.existsSync()) {
-      throw Exception('build.gradle(.kts) file not found in android/app/');
+      throw Exception('build.gradle(.kts) or build.gradle file not found in android/app/');
     } else {
       await _updateGroovyBuildGradle(buildGradleGroovyFile);
       return;
@@ -289,10 +266,7 @@ Future<void> _setupMainActivity(Directory appDir, Directory projectDir) async {
 }
 
 Future<String> _generateMainActivity(String packageName) async {
-  final pluginDir = _findPluginDirectory();
-  final file = File(
-    path.join(pluginDir.path, 'assets', 'source', 'main_activity.txt'),
-  );
+  final file = getAssetFile('source/main_activity.txt');
 
   final lines = await file.readAsLines();
 
@@ -303,36 +277,14 @@ Future<String> _generateMainActivity(String packageName) async {
   return lines.join('\n');
 }
 
-Directory _findPluginDirectory() {
-  final scriptPath = Platform.script.toFilePath();
-  var dir = File(scriptPath).parent;
+File getAssetFile(String relativePath) {
+  final scriptDir = File.fromUri(Platform.script).parent.path;
+  final filePath = p.join(scriptDir, 'assets', relativePath);
+  final file = File(filePath);
 
-  // 🔹 Case 1: running inside example project
-  // e.g.  .../spotikit/example/
-  if (path.basename(Directory.current.path) == 'example') {
-    final pluginRoot = Directory.current.parent;
-    final pubspec = File(path.join(pluginRoot.path, 'pubspec.yaml'));
-    if (pubspec.existsSync() &&
-        pubspec.readAsStringSync().contains('name: spotikit')) {
-      return pluginRoot;
-    }
+  if (!file.existsSync()) {
+    throw Exception('Asset not found: $filePath');
   }
 
-  // 🔹 Case 2: running from pub-cache (installed via pub.dev)
-  // script path: .../.pub-cache/hosted/pub.dev/spotikit-x.y.z/bin/init.dart
-  while (dir.parent.path != dir.path) {
-    final pubspec = File(path.join(dir.path, 'pubspec.yaml'));
-    if (pubspec.existsSync()) {
-      final content = pubspec.readAsStringSync();
-      if (content.contains('name: spotikit')) {
-        return dir;
-      }
-    }
-    dir = dir.parent;
-  }
-
-  throw Exception(
-      '❌ Could not locate plugin root. Script path: $scriptPath');
+  return file;
 }
-
-
