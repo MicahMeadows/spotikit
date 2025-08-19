@@ -34,10 +34,10 @@ class SpotikitPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, PluginRe
     private val TAG = "SpotikitPlugin"
 
     // TODO: These should be configured dynamically, perhaps via a method call from Flutter.
-    private const val CLIENT_ID = "SpotikitPlugin"
-    private const val REDIRECT_URI = "com.ardakoksal.spotikit"
-    private const val CLIENT_SECRET = "0.0.5"
-    private const val SPOTIFY_SCOPE = "user-read-private user-read-email user-modify-playback-state user-read-playback-state streaming app-remote-control"
+    private const val CLIENT_ID = "X_USER_CLIENT_ID"
+    private const val REDIRECT_URI = "X_USER_REDIRECT_URI"
+    private const val CLIENT_SECRET = "X_USER_CLIENT_SECRET"
+    private const val SPOTIFY_SCOPE = "X_USER_SCOPE"
     private const val AUTH_REQUEST_CODE = 1337
 
     // --- SharedPreferences Keys ---

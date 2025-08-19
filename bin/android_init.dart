@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:path/path.dart' as p;
 import 'package:spotikit/config.dart';
 
 void main() async {
@@ -16,7 +17,7 @@ class AndroidInit {
 
   Future<void> run() async {
     try {
-      print('Current working directory: ${Directory.current.path}');
+      print('Script location: ${Platform.script.toFilePath()}');
 
       if (!initConfig()) {
         print('Failed to load config. Exiting.');
@@ -25,7 +26,7 @@ class AndroidInit {
 
       final pluginFile = findPluginFile();
       if (pluginFile == null) {
-        print('Cannot find SpotikitPlugin.kt. Check your path.');
+        print('Cannot find SpotikitPlugin.kt. Please check your project structure.');
         return;
       }
 
@@ -54,17 +55,36 @@ class AndroidInit {
   }
 
   File? findPluginFile() {
-    // Relative path from plugin root to SpotikitPlugin.kt
-    final relativePath = 'android/src/main/kotlin/com/ardakoksal/spotikit/SpotikitPlugin.kt';
-    final file = File(relativePath);
+    // 1. Get the URI of the script that is currently running.
+    final scriptUri = Platform.script;
 
-    if (file.existsSync()) return file;
+    // 2. Find the root directory of your plugin by navigating UP from the script's location.
+    //    This assumes your script is in a subdirectory of the plugin root, like `tool/`.
+    final scriptPath = scriptUri.toFilePath();
+    final pluginRoot = p.dirname(p.dirname(scriptPath));
 
-    // Try alternative: relative to current directory
-    final altFile = File('${Directory.current.path}/$relativePath');
-    if (altFile.existsSync()) return altFile;
+    // 3. Now, build a reliable path to your Kotlin file from the plugin root.
+    final pluginFilePath = p.join(
+      pluginRoot,
+      'android',
+      'src',
+      'main',
+      'kotlin',
+      'com',
+      'ardakoksal',
+      'spotikit',
+      'SpotikitPlugin.kt',
+    );
 
-    return null;
+    final file = File(pluginFilePath);
+
+    if (file.existsSync()) {
+      return file;
+    } else {
+      print('Error: Could not find plugin file.');
+      print('       Calculated path was: $pluginFilePath');
+      return null;
+    }
   }
 
   Future<bool> injectSpotifyConfig(File file) async {
