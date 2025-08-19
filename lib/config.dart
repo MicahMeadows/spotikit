@@ -16,7 +16,6 @@ class SpotikitConfig {
   final String clientId;
   final String clientSecret;
   final String scope;
-  final String packageName;
   final ManifestConfig manifest;
 
   static const String defaultScope =
@@ -27,11 +26,10 @@ class SpotikitConfig {
     required this.clientId,
     required this.clientSecret,
     required this.manifest,
-    required this.packageName,
     String? scope,
   }) : scope = scope ?? defaultScope;
 
-  factory SpotikitConfig.fromPubspec(String packageName) {
+  factory SpotikitConfig.fromPubspec() {
     final file = File('pubspec.yaml');
     if (!file.existsSync()) {
       throw Exception('pubspec.yaml not found!');
