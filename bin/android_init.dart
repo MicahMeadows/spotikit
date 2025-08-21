@@ -248,7 +248,13 @@ Future<String> addDependencies(String content, bool isKotlinDsl) async {
   final match = dependenciesRegex.firstMatch(content);
 
   if (match == null) {
-    throw Exception('Could not find dependencies block in build.gradle file');
+    print('ℹ️  No dependencies block found, creating one...');
+    // If no dependencies block exists, create one
+    final indentation = isKotlinDsl ? '' : '    ';
+    final dependenciesBlock = isKotlinDsl
+        ? 'dependencies {\n${dependencies.map((d) => '    $d').join('\n')}\n}'
+        : 'dependencies {\n${dependencies.map((d) => '    $d').join('\n')}\n}';
+    return '$content\n\n$indentation$dependenciesBlock\n';
   }
 
   // Check if our dependencies are already present

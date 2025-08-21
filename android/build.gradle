@@ -47,12 +47,6 @@ android {
         minSdk = 21
     }
 
-    repositories {
-        flatDir {
-            dirs 'libs'
-        }
-    }
-
 
     dependencies {
         implementation("com.squareup.okhttp3:okhttp:4.12.0")
@@ -60,9 +54,6 @@ android {
 
         testImplementation("org.jetbrains.kotlin:kotlin-test")
         testImplementation("org.mockito:mockito-core:5.0.0")
-
-        compileOnly(files("libs/spotify-app-remote-release-0.8.0.aar"))
-        compileOnly(files("libs/spotify-auth-release-2.1.0.aar"))
     }
 
     testOptions {

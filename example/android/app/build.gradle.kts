@@ -15,6 +15,13 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
 
+repositories {
+    flatDir {
+        dirs("spotify")
+    }
+}
+
+
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_11.toString()
     }
@@ -41,4 +48,13 @@ android {
 
 flutter {
     source = "../.."
+}
+
+
+dependencies {
+    implementation(files("spotify/spotify-app-remote-release-0.8.0.aar"))
+    implementation(files("spotify/spotify-auth-release-2.1.0.aar"))
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
 }
