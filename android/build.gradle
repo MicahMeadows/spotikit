@@ -18,10 +18,6 @@ allprojects {
     repositories {
         google()
         mavenCentral()
-
-        flatDir {
-            dirs "${project.projectDir}/libs"
-        }
     }
 }
 
@@ -65,8 +61,8 @@ android {
 }
 
 dependencies {
-    api(name: 'spotify-app-remote-release-0.8.0', ext: 'aar')
-    api(name: 'spotify-auth-release-2.1.0', ext: 'aar')
+    api project(':spotify-app-remote')
+    api project(':spotify-auth')
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")

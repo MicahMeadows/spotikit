@@ -8,19 +8,12 @@ plugins {
 android {
     namespace = "com.ardakoksal.spotikit_example"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    ndkVersion = "27.3.13750724"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
-
-repositories {
-    flatDir {
-        dirs("spotify")
-    }
-}
-
 
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_11.toString()
@@ -31,7 +24,7 @@ repositories {
         applicationId = "com.ardakoksal.spotikit_example"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = 27
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -50,11 +43,3 @@ flutter {
     source = "../.."
 }
 
-
-dependencies {
-    implementation(files("spotify/spotify-app-remote-release-0.8.0.aar"))
-    implementation(files("spotify/spotify-auth-release-2.1.0.aar"))
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
-}
