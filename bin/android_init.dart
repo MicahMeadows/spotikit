@@ -1,5 +1,4 @@
 #!/usr/bin/env dart
-
 // ignore_for_file: avoid_print
 
 import 'dart:io';
@@ -57,11 +56,15 @@ Future<void> main(List<String> args) async {
     // Download and process the plugin template
     await downloadAndProcessTemplate(packageName);
 
+    // Update build.gradle file
+    await updateBuildGradle();
+
     print('\n✅ Spotikit Android initialization completed successfully!');
     print('📝 The following files have been set up:');
     print('   • android/app/spotify/spotify-app-remote-release-0.8.0.aar');
     print('   • android/app/spotify/spotify-auth-release-2.1.0.aar');
     print('   • ${getKotlinPath(packageName)}/SpotikitPlugin.kt');
+    print('   • Updated android/app/build.gradle with required dependencies');
   } catch (e) {
     print('❌ Error: $e');
     exit(1);
@@ -185,4 +188,174 @@ Future<void> downloadAndProcessTemplate(String packageName) async {
 String getKotlinPath(String packageName) {
   final packagePath = packageName.replaceAll('.', '/');
   return 'android/app/src/main/kotlin/$packagePath/SpotikitPlugin.kt';
+}
+
+Future<void> updateBuildGradle() async {
+  print('⚙️  Updating build.gradle configuration...');
+
+  // Check for build.gradle.kts first, then build.gradle
+  final buildGradleKts = File('android/app/build.gradle.kts');
+  final buildGradle = File('android/app/build.gradle');
+
+  File? targetFile;
+  bool isKotlinDsl = false;
+
+  if (await buildGradleKts.exists()) {
+    targetFile = buildGradleKts;
+    isKotlinDsl = true;
+  } else if (await buildGradle.exists()) {
+    targetFile = buildGradle;
+    isKotlinDsl = false;
+  } else {
+    throw Exception(
+      'No build.gradle or build.gradle.kts file found in android/app/',
+    );
+  }
+
+  String content = await targetFile.readAsString();
+
+  // Add dependencies
+  content = await addDependencies(content, isKotlinDsl);
+
+  // Add repositories
+  content = await addRepositories(content, isKotlinDsl);
+
+  // Write back the modified content
+  await targetFile.writeAsString(content);
+
+  print('✅ Updated ${isKotlinDsl ? 'build.gradle.kts' : 'build.gradle'}');
+}
+
+Future<String> addDependencies(String content, bool isKotlinDsl) async {
+  final dependencies = isKotlinDsl
+      ? [
+          'implementation(files("spotify/spotify-app-remote-release-0.8.0.aar"))',
+          'implementation(files("spotify/spotify-auth-release-2.1.0.aar"))',
+          'implementation("com.squareup.okhttp3:okhttp:4.12.0")',
+          'implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")',
+          'implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")',
+        ]
+      : [
+          'implementation files("spotify/spotify-app-remote-release-0.8.0.aar")',
+          'implementation files("spotify/spotify-auth-release-2.1.0.aar")',
+          'implementation "com.squareup.okhttp3:okhttp:4.12.0"',
+          'implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"',
+          'implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.7.0"',
+        ];
+
+  // Find the dependencies block
+  final dependenciesRegex = RegExp(r'dependencies\s*\{', multiLine: true);
+  final match = dependenciesRegex.firstMatch(content);
+
+  if (match == null) {
+    throw Exception('Could not find dependencies block in build.gradle file');
+  }
+
+  // Check if our dependencies are already present
+  bool hasSpotikitDeps = dependencies.any(
+    (dep) =>
+        content.contains(dep.split('(')[0]) ||
+        content.contains(dep.split(' ')[0]),
+  );
+
+  if (hasSpotikitDeps) {
+    print('ℹ️  Spotikit dependencies already present, skipping...');
+    return content;
+  }
+
+  // Find the end of the dependencies block to insert before the closing brace
+  int braceCount = 0;
+  int insertionPoint = match.end;
+
+  for (int i = match.end; i < content.length; i++) {
+    if (content[i] == '{') {
+      braceCount++;
+    } else if (content[i] == '}') {
+      if (braceCount == 0) {
+        insertionPoint = i;
+        break;
+      }
+      braceCount--;
+    }
+  }
+
+  // Prepare the dependencies string
+  final indentation = '    ';
+  final dependenciesString = dependencies
+      .map((dep) => '$indentation$dep')
+      .join('\n');
+  final toInsert =
+      '\n$indentation// Spotikit dependencies\n$dependenciesString\n';
+
+  // Insert the dependencies
+  return content.substring(0, insertionPoint) +
+      toInsert +
+      content.substring(insertionPoint);
+}
+
+Future<String> addRepositories(String content, bool isKotlinDsl) async {
+  final repositoryBlock = isKotlinDsl
+      ? '''repositories {
+    flatDir {
+        dirs("spotify")
+    }
+}'''
+      : '''repositories {
+    flatDir {
+        dirs 'spotify'
+    }
+}''';
+
+  // Check if repositories block already exists
+  if (content.contains('flatDir') && content.contains('spotify')) {
+    print('ℹ️  Spotify flatDir repository already present, skipping...');
+    return content;
+  }
+
+  // Find existing repositories block
+  final repositoriesRegex = RegExp(r'repositories\s*\{', multiLine: true);
+  final match = repositoriesRegex.firstMatch(content);
+
+  if (match != null) {
+    // Find the end of the repositories block
+    int braceCount = 0;
+    int insertionPoint = match.end;
+
+    for (int i = match.end; i < content.length; i++) {
+      if (content[i] == '{') {
+        braceCount++;
+      } else if (content[i] == '}') {
+        if (braceCount == 0) {
+          insertionPoint = i;
+          break;
+        }
+        braceCount--;
+      }
+    }
+
+    // Insert flatDir into existing repositories block
+    final flatDirBlock = isKotlinDsl
+        ? '\n    flatDir {\n        dirs("spotify")\n    }\n'
+        : '\n    flatDir {\n        dirs \'spotify\'\n    }\n';
+
+    return content.substring(0, insertionPoint) +
+        flatDirBlock +
+        content.substring(insertionPoint);
+  } else {
+    // No repositories block found, add it after android block
+    final androidRegex = RegExp(
+      r'android\s*\{[^}]*\}',
+      multiLine: true,
+      dotAll: true,
+    );
+    final androidMatch = androidRegex.firstMatch(content);
+
+    if (androidMatch != null) {
+      final insertionPoint = androidMatch.end;
+      return '${content.substring(0, insertionPoint)}\n\n$repositoryBlock\n${content.substring(insertionPoint)}';
+    } else {
+      // Fallback: add at the end of the file
+      return '$content\n\n$repositoryBlock\n';
+    }
+  }
 }
