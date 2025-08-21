@@ -1,4 +1,4 @@
-## 0.0.17
+## 0.0.18
 
-### Demo Release17
+### Demo Release18
 - Test release of the initial version of the project.

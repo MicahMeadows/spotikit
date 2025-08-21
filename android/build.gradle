@@ -18,6 +18,10 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+
+        flatDir {
+            dirs 'libs'
+        }
     }
 }
 
@@ -47,15 +51,6 @@ android {
         minSdk = 21
     }
 
-
-    dependencies {
-        implementation("com.squareup.okhttp3:okhttp:4.12.0")
-        implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-
-        testImplementation("org.jetbrains.kotlin:kotlin-test")
-        testImplementation("org.mockito:mockito-core:5.0.0")
-    }
-
     testOptions {
         unitTests.all {
             useJUnitPlatform()
@@ -67,4 +62,16 @@ android {
             }
         }
     }
+}
+
+dependencies {
+    api(name: 'auth-2.0.0', ext: 'aar')
+    api(name: 'app-remote-0.7.2', ext: 'aar')
+
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+
+    // Test dependencies
+    testImplementation("org.jetbrains.kotlin:kotlin-test")
+    testImplementation("org.mockito:mockito-core:5.0.0")
 }
