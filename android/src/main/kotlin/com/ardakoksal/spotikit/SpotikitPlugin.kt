@@ -154,6 +154,10 @@ class SpotikitPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, PluginRe
       "logout" -> logout(result)
       "skipTrack" -> skipTrack(result)
       "previousTrack" -> previousTrack(result)
+      "isPlaying" -> isPlaying(result)
+      "seekTo" -> seekTo(call, result)
+      "skipForward" -> skipForward(call, result)
+      "skipBackward" -> skipBackward(call, result)
       else -> result.notImplemented()
     }
   }
@@ -442,6 +446,62 @@ class SpotikitPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, PluginRe
       }
     })
   }
+
+  private fun isPlaying(result: Result) {
+    performActionIfConnected(result) { remote ->
+      remote.playerApi.playerState
+        .setResultCallback { playerState ->
+          result.success(!playerState.isPaused)
+        }
+        .setErrorCallback { error ->
+          result.error("STATE_ERROR", error.message, null)
+        }
+    }
+  }
+
+  private fun seekTo(call: MethodCall, result: Result) {
+    val positionMs = call.argument<Long>("positionMs")
+    if (positionMs == null) {
+      result.error("INVALID_ARGUMENT", "positionMs must be provided", null)
+      return
+    }
+
+    performActionIfConnected(result) { remote ->
+      remote.playerApi.seekTo(positionMs)
+        .setResultCallback { result.success(true) }
+        .setErrorCallback { error -> result.error("SEEK_ERROR", error.message, null) }
+    }
+  }
+
+  private fun skipForward(call: MethodCall, result: Result) {
+    val seconds = call.argument<Long>("seconds") ?: 0L
+    performActionIfConnected(result) { remote ->
+      remote.playerApi.playerState
+        .setResultCallback { playerState ->
+          val newPosition = playerState.playbackPosition + seconds * 1000
+          remote.playerApi.seekTo(newPosition)
+            .setResultCallback { result.success(true) }
+            .setErrorCallback { error -> result.error("SKIP_FORWARD_ERROR", error.message, null) }
+        }
+        .setErrorCallback { error -> result.error("STATE_ERROR", error.message, null) }
+    }
+  }
+
+  private fun skipBackward(call: MethodCall, result: Result) {
+    val seconds = call.argument<Long>("seconds") ?: 0L
+    performActionIfConnected(result) { remote ->
+      remote.playerApi.playerState
+        .setResultCallback { playerState ->
+          var newPosition = playerState.playbackPosition - seconds * 1000
+          if (newPosition < 0) newPosition = 0
+          remote.playerApi.seekTo(newPosition)
+            .setResultCallback { result.success(true) }
+            .setErrorCallback { error -> result.error("SKIP_BACKWARD_ERROR", error.message, null) }
+        }
+        .setErrorCallback { error -> result.error("STATE_ERROR", error.message, null) }
+    }
+  }
+
 
   // ---------------------------------------------------------------------------------
   // Helper Methods

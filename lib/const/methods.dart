@@ -10,4 +10,8 @@ class Methods {
   static const String getTrackInfo = 'getTrackInfo';
   static const String disconnect = 'disconnect';
   static const String logout = 'logout';
+  static const String isPlaying = 'isPlaying';
+  static const String skipForward = 'skipForward';
+  static const String skipBackward = 'skipBackward';
+  static const String seekTo = 'seekTo';
 }

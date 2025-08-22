@@ -1,54 +1,18 @@
 library;
 
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:logger/logger.dart';
+import 'package:spotikit/log/spotikit_log.dart';
 
+import 'api/spotify_api.dart';
 import 'const/methods.dart';
 import 'models/auth_state.dart';
-
-@immutable
-class TrackInfo {
-  final String artist;
-  final String name;
-  final String uri;
-  final bool isPaused;
-
-  const TrackInfo({
-    required this.artist,
-    required this.name,
-    required this.uri,
-    required this.isPaused,
-  });
-
-  factory TrackInfo.fromMap(Map<dynamic, dynamic> map) {
-    return TrackInfo(
-      artist: map['artist'] as String,
-      name: map['name'] as String,
-      uri: map['uri'] as String,
-      isPaused: map['isPaused'] as bool,
-    );
-  }
-
-  @override
-  String toString() {
-    return 'TrackInfo(artist: $artist, name: $name, isPaused: $isPaused)';
-  }
-}
-
-final Logger _logger = Logger(
-  printer: PrettyPrinter(
-    methodCount: 2,
-    errorMethodCount: 8,
-    lineLength: 120,
-    colors: true,
-    printEmojis: true,
-  ),
-);
+import 'models/sealed/track_result.dart';
+import 'models/spotify/spotify_track_info.dart';
 
 class Spotikit {
-  static bool _loggingEnabled = false;
+  static final SpotifyApi _api = SpotifyApi();
+  static SpotifyApi get api => _api;
 
   static const MethodChannel _channel = MethodChannel('spotikit');
 
@@ -68,7 +32,7 @@ class Spotikit {
     required String clientSecret,
     String scope = _defaultScope,
   }) async {
-    try{
+    try {
       if (!_isListenerInitialized) {
         _channel.setMethodCallHandler(_handleNativeEvents);
         _isListenerInitialized = true;
@@ -79,10 +43,10 @@ class Spotikit {
         'clientSecret': clientSecret,
         'scope': scope,
       });
-      log("Spotikit initialized successfully.");
+      SpotikitLog.log("Spotikit initialized successfully.");
       return true;
-    }catch(e){
-      _logger.e("Error during initialization: $e");
+    } catch (e) {
+      SpotikitLog.error("Error during initialization: $e");
     }
     return false;
   }
@@ -102,18 +66,13 @@ class Spotikit {
     if (!await authenticateSpotify()) return;
     if (!await connectToSpotify()) return;
 
-    log("Spotikit initialized and connected to remote successfully.");
+    SpotikitLog.log(
+      "Spotikit initialized and connected to remote successfully.",
+    );
   }
 
   static void enableLogging() {
-    _loggingEnabled = true;
-    _logger.i("Logging enabled");
-  }
-
-  static void log(String message) {
-    if (_loggingEnabled) {
-      _logger.i(message);
-    }
+    SpotikitLog.enableLogging();
   }
 
   static Future<void> _handleNativeEvents(MethodCall call) async {
@@ -140,62 +99,62 @@ class Spotikit {
     try {
       String? result = await _channel.invokeMethod<String>('connectToSpotify');
       if (result == "Connected") {
-        log("Spotify is connected!");
+        SpotikitLog.log("Spotify is connected!");
       } else if (result == "Already connected") {
-        log("Spotify was already connected");
+        SpotikitLog.log("Spotify was already connected");
       }
       return result == "Connected" || result == "Already connected";
     } on PlatformException catch (e) {
-      _logger.e('Spotify connection failed: ${e.code} - ${e.message}');
+      SpotikitLog.error('Spotify connection failed: ${e.code} - ${e.message}');
     } catch (e) {
-      _logger.e('Unexpected error: $e');
+      SpotikitLog.error('Unexpected error: $e');
     }
     return false;
   }
 
-  static Future<bool> authenticateSpotify() async{
-    try{
+  static Future<bool> authenticateSpotify() async {
+    try {
       await _channel.invokeMethod<String>(Methods.authenticateSpotify);
       return true;
-    } catch(e){
-      _logger.e("Error during Spotify authentication: $e");
+    } catch (e) {
+      SpotikitLog.error("Error during Spotify authentication: $e");
     }
     return false;
   }
 
-  static Future<String?> getAccessToken() async{
-    try{
+  static Future<String?> getAccessToken() async {
+    try {
       return await _channel.invokeMethod<String>(Methods.getAccessToken);
-    } catch(e){
-      _logger.e("Error retrieving access token: $e");
+    } catch (e) {
+      SpotikitLog.error("Error retrieving access token: $e");
       return null;
     }
   }
 
-  static Future<void> play(String spotifyUri) async{
-    try{
+  static Future<void> playUri({required String spotifyUri}) async {
+    try {
       await _channel.invokeMethod<String>(Methods.play, {
         'spotifyUri': spotifyUri,
       });
-    } catch(e){
-      _logger.e("Error during play: $e");
+    } catch (e) {
+      SpotikitLog.error("Error during play: $e");
     }
   }
 
-  static Future<void> pause() async{
-    try{
+  static Future<void> pause() async {
+    try {
       await _channel.invokeMethod<String>(Methods.pause);
-    } catch(e){
-      _logger.e("Error during pause: $e");
+    } catch (e) {
+      SpotikitLog.error("Error during pause: $e");
       return Future.value(null);
     }
   }
 
   static Future<void> resume() async {
-    try{
+    try {
       await _channel.invokeMethod<String>(Methods.resume);
-    } catch(e){
-      _logger.e("Error during resume: $e");
+    } catch (e) {
+      SpotikitLog.error("Error during resume: $e");
     }
   }
 
@@ -203,7 +162,7 @@ class Spotikit {
     try {
       await _channel.invokeMethod<String>(Methods.skipTrack);
     } catch (e) {
-      _logger.e("Error during skipTrack: $e");
+      SpotikitLog.error("Error during skipTrack: $e");
     }
   }
 
@@ -211,45 +170,99 @@ class Spotikit {
     try {
       await _channel.invokeMethod<String>(Methods.previousTrack);
     } catch (e) {
-      _logger.e("Error during previousTrack: $e");
+      SpotikitLog.error("Error during previousTrack: $e");
     }
   }
 
-  static Future<TrackInfo?> getTrackInfo() async {
-    try{
+  static Future<TrackResult?> getPlayingTrackInfo({bool full = false}) async {
+    try {
       final Map? result = await _channel.invokeMapMethod(Methods.getTrackInfo);
       if (result == null) return null;
-      return TrackInfo.fromMap(result);
-    }catch(e){
-      _logger.e("Error retrieving track info: $e");
+      final trackInfo = SpotifyTrackInfo.fromMap(result);
+      if (!full) {
+        return TrackInfoResult(trackInfo);
+      }
+      final id = trackInfo.uri.split(":").last;
+
+      final String? accessToken = await getAccessToken();
+      if (accessToken == null) {
+        SpotikitLog.error(
+          "Access token is null, cannot fetch full track info.",
+        );
+        return null;
+      }
+      final track = await _api.getTrackById(id: id, accessToken: accessToken);
+      if (track == null) {
+        SpotikitLog.error("Failed to fetch full track info from Spotify API.");
+        return null;
+      }
+      return SpotifyTrackResult(track);
+    } catch (e) {
+      SpotikitLog.error("Error retrieving track info: $e");
       return null;
     }
   }
 
-  static Future<void> disconnect() async{
-    try{
+  static Future<void> disconnect() async {
+    try {
       String? val = await _channel.invokeMethod<String>(Methods.disconnect);
 
       if (val == "Disconnected") {
-        log("Spotify disconnected successfully.");
+        SpotikitLog.log("Spotify disconnected successfully.");
       } else if (val == "Already disconnected") {
-        log("Spotify was already disconnected.");
-      }
-      else if (val == "Not connected, no action taken") {
-        log("Spotify was not connected, no action taken.");
+        SpotikitLog.log("Spotify was already disconnected.");
+      } else if (val == "Not connected, no action taken") {
+        SpotikitLog.log("Spotify was not connected, no action taken.");
       }
       throw "Unknown response: $val";
     } catch (e) {
-      _logger.e("Error during disconnect: $e");
+      SpotikitLog.error("Error during disconnect: $e");
     }
   }
 
   static Future<void> logout() async {
-    try{
+    try {
       await _channel.invokeMethod<String>(Methods.logout);
     } catch (e) {
-      _logger.e("Error during logout: $e");
+      SpotikitLog.error("Error during logout: $e");
     }
   }
 
+  static Future<bool> isPlaying() async {
+    try {
+      final bool? result = await _channel.invokeMethod<bool>(Methods.isPlaying);
+      return result ?? false;
+    } catch (e) {
+      SpotikitLog.error("Error checking if playing: $e");
+      return false;
+    }
+  }
+
+  static Future<void> seekTo({required int positionMs}) async {
+    try {
+      await _channel.invokeMethod(Methods.seekTo, {"positionMs": positionMs});
+    } catch (e) {
+      SpotikitLog.error("Error during seekTo: $e");
+    }
+  }
+
+  static Future<void> skipForward({double seconds = 5}) async {
+    try {
+      await _channel.invokeMethod(Methods.skipForward, {
+        "seconds": (seconds * 1000).toInt(),
+      });
+    } catch (e) {
+      SpotikitLog.error("Error during skipForward: $e");
+    }
+  }
+
+  static Future<void> skipBackward({double seconds = 5}) async {
+    try {
+      await _channel.invokeMethod(Methods.skipBackward, {
+        "seconds": (seconds * 1000).toInt(),
+      });
+    } catch (e) {
+      SpotikitLog.error("Error during skipBackward: $e");
+    }
+  }
 }
