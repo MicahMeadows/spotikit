@@ -1,6 +1,12 @@
+library;
+
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:logger/logger.dart';
+
+import 'const/methods.dart';
+import 'models/auth_state.dart';
 
 @immutable
 class TrackInfo {
@@ -31,45 +37,54 @@ class TrackInfo {
   }
 }
 
-@immutable
-abstract class AuthState {}
-
-class AuthSuccess extends AuthState {
-  final String accessToken;
-  AuthSuccess(this.accessToken);
-}
-
-class AuthFailure extends AuthState {
-  final String error;
-  final String? message;
-  AuthFailure(this.error, this.message);
-}
-
-class AuthCancelled extends AuthState {}
+final Logger _logger = Logger(
+  printer: PrettyPrinter(
+    methodCount: 2,
+    errorMethodCount: 8,
+    lineLength: 120,
+    colors: true,
+    printEmojis: true,
+  ),
+);
 
 class Spotikit {
-  static const MethodChannel _channel = MethodChannel('spotikit');
-  static final StreamController<AuthState> _authController = StreamController<AuthState>.broadcast();
-  static Stream<AuthState> get onAuthStateChanged => _authController.stream;
-  static bool _isListenerInitialized = false;
-  static const String _defaultScope = "user-read-playback-state user-modify-playback-state user-read-currently-playing app-remote-control streaming playlist-read-private playlist-read-collaborative playlist-modify-public playlist-modify-private user-library-modify user-library-read user-top-read user-read-playback-position user-read-recently-played user-follow-read user-follow-modify user-read-email user-read-private";
+  static bool _loggingEnabled = false;
 
-  static Future<void> initialize({
+  static const MethodChannel _channel = MethodChannel('spotikit');
+
+  static final StreamController<AuthState> _authController =
+      StreamController<AuthState>.broadcast();
+
+  static Stream<AuthState> get onAuthStateChanged => _authController.stream;
+
+  static bool _isListenerInitialized = false;
+
+  static const String _defaultScope =
+      "user-read-playback-state user-modify-playback-state user-read-currently-playing app-remote-control streaming playlist-read-private playlist-read-collaborative playlist-modify-public playlist-modify-private user-library-modify user-library-read user-top-read user-read-playback-position user-read-recently-played user-follow-read user-follow-modify user-read-email user-read-private";
+
+  static Future<bool> initialize({
     required String clientId,
     required String redirectUri,
     required String clientSecret,
     String scope = _defaultScope,
   }) async {
-    if (!_isListenerInitialized) {
-      _channel.setMethodCallHandler(_handleNativeEvents);
-      _isListenerInitialized = true;
+    try{
+      if (!_isListenerInitialized) {
+        _channel.setMethodCallHandler(_handleNativeEvents);
+        _isListenerInitialized = true;
+      }
+      await _channel.invokeMethod('initialize', {
+        'clientId': clientId,
+        'redirectUri': redirectUri,
+        'clientSecret': clientSecret,
+        'scope': scope,
+      });
+      log("Spotikit initialized successfully.");
+      return true;
+    }catch(e){
+      _logger.e("Error during initialization: $e");
     }
-    await _channel.invokeMethod('initialize', {
-      'clientId': clientId,
-      'redirectUri': redirectUri,
-      'clientSecret': clientSecret,
-      'scope': scope,
-    });
+    return false;
   }
 
   static Future<void> fullInitialize({
@@ -84,19 +99,21 @@ class Spotikit {
       clientSecret: clientSecret,
       scope: scope,
     );
-    try {
-      await authenticateSpotify();
-    } catch (e) {
-      print("Error during Spotify authentication: $e");
-      return;
+    if (!await authenticateSpotify()) return;
+    if (!await connectToSpotify()) return;
+
+    log("Spotikit initialized and connected to remote successfully.");
+  }
+
+  static void enableLogging() {
+    _loggingEnabled = true;
+    _logger.i("Logging enabled");
+  }
+
+  static void log(String message) {
+    if (_loggingEnabled) {
+      _logger.i(message);
     }
-    try {
-      await connectToSpotify();
-    } catch (e) {
-      print("Error connecting to Spotify: $e");
-      return;
-    }
-    print("Spotikit initialized and connected to remote successfully.");
   }
 
   static Future<void> _handleNativeEvents(MethodCall call) async {
@@ -119,20 +136,120 @@ class Spotikit {
     }
   }
 
-  static Future<String?> connectToSpotify() => _channel.invokeMethod<String>('connectToSpotify');
-  static Future<String?> authenticateSpotify() => _channel.invokeMethod<String>('authenticateSpotify');
-  static Future<String?> getAccessToken() => _channel.invokeMethod<String>('getAccessToken');
-  static Future<String?> play(String spotifyUri) =>
-      _channel.invokeMethod<String>('play', {'spotifyUri': spotifyUri});
-  static Future<String?> pause() => _channel.invokeMethod<String>('pause');
-  static Future<String?> resume() => _channel.invokeMethod<String>('resume');
-  static Future<String?> skipTrack() => _channel.invokeMethod<String>('skipTrack');
-  static Future<String?> previousTrack() => _channel.invokeMethod<String>('previousTrack');
-  static Future<TrackInfo?> getTrackInfo() async {
-    final Map? result = await _channel.invokeMapMethod('getTrackInfo');
-    if (result == null) return null;
-    return TrackInfo.fromMap(result);
+  static Future<bool> connectToSpotify() async {
+    try {
+      String? result = await _channel.invokeMethod<String>('connectToSpotify');
+      if (result == "Connected") {
+        log("Spotify is connected!");
+      } else if (result == "Already connected") {
+        log("Spotify was already connected");
+      }
+      return result == "Connected" || result == "Already connected";
+    } on PlatformException catch (e) {
+      _logger.e('Spotify connection failed: ${e.code} - ${e.message}');
+    } catch (e) {
+      _logger.e('Unexpected error: $e');
+    }
+    return false;
   }
-  static Future<String?> disconnect() => _channel.invokeMethod<String>('disconnect');
-  static Future<String?> logout() => _channel.invokeMethod<String>('logout');
+
+  static Future<bool> authenticateSpotify() async{
+    try{
+      await _channel.invokeMethod<String>(Methods.authenticateSpotify);
+      return true;
+    } catch(e){
+      _logger.e("Error during Spotify authentication: $e");
+    }
+    return false;
+  }
+
+  static Future<String?> getAccessToken() async{
+    try{
+      return await _channel.invokeMethod<String>(Methods.getAccessToken);
+    } catch(e){
+      _logger.e("Error retrieving access token: $e");
+      return null;
+    }
+  }
+
+  static Future<void> play(String spotifyUri) async{
+    try{
+      await _channel.invokeMethod<String>(Methods.play, {
+        'spotifyUri': spotifyUri,
+      });
+    } catch(e){
+      _logger.e("Error during play: $e");
+    }
+  }
+
+  static Future<void> pause() async{
+    try{
+      await _channel.invokeMethod<String>(Methods.pause);
+    } catch(e){
+      _logger.e("Error during pause: $e");
+      return Future.value(null);
+    }
+  }
+
+  static Future<void> resume() async {
+    try{
+      await _channel.invokeMethod<String>(Methods.resume);
+    } catch(e){
+      _logger.e("Error during resume: $e");
+    }
+  }
+
+  static Future<void> skipTrack() async {
+    try {
+      await _channel.invokeMethod<String>(Methods.skipTrack);
+    } catch (e) {
+      _logger.e("Error during skipTrack: $e");
+    }
+  }
+
+  static Future<void> previousTrack() async {
+    try {
+      await _channel.invokeMethod<String>(Methods.previousTrack);
+    } catch (e) {
+      _logger.e("Error during previousTrack: $e");
+    }
+  }
+
+  static Future<TrackInfo?> getTrackInfo() async {
+    try{
+      final Map? result = await _channel.invokeMapMethod(Methods.getTrackInfo);
+      if (result == null) return null;
+      return TrackInfo.fromMap(result);
+    }catch(e){
+      _logger.e("Error retrieving track info: $e");
+      return null;
+    }
+  }
+
+  static Future<void> disconnect() async{
+    try{
+      String? val = await _channel.invokeMethod<String>(Methods.disconnect);
+
+      if (val == "Disconnected") {
+        log("Spotify disconnected successfully.");
+      } else if (val == "Already disconnected") {
+        log("Spotify was already disconnected.");
+      }
+      else if (val == "Not connected, no action taken") {
+        log("Spotify was not connected, no action taken.");
+      }
+      throw "Unknown response: $val";
+    } catch (e) {
+      _logger.e("Error during disconnect: $e");
+    }
+  }
+
+  static Future<void> logout() async {
+    try{
+      await _channel.invokeMethod<String>(Methods.logout);
+    } catch (e) {
+      _logger.e("Error during logout: $e");
+    }
+  }
+
 }

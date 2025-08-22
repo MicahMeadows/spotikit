@@ -3,22 +3,27 @@
 
 import 'dart:io';
 import 'package:http/http.dart' as http;
-import 'package:path/path.dart' as path;
 
 const String _spotifyAppRemoteUrl =
     'https://github.com/spotify/android-sdk/releases/download/v0.8.0-appremote_v2.1.0-auth/spotify-app-remote-release-0.8.0.aar';
 const String _spotifyAuthUrl =
     'https://github.com/spotify/android-sdk/releases/download/v0.8.0-appremote_v2.1.0-auth/spotify-auth-release-2.1.0.aar';
 
-const String _spotifyAppRemoteGradle = "configurations.create(\"default\")\nartifacts.add(\"default\", file('spotify-app-remote-release-0.8.0.aar'))";
-const String _spotifyAuthGradle = "configurations.create(\"default\")\nartifacts.add(\"default\", file('spotify-auth-release-2.1.0.aar'))";
+const String _spotifyAppRemoteGradle =
+    "configurations.create(\"default\")\nartifacts.add(\"default\", file('spotify-app-remote-release-0.8.0.aar'))";
+const String _spotifyAuthGradle =
+    "configurations.create(\"default\")\nartifacts.add(\"default\", file('spotify-auth-release-2.1.0.aar'))";
 
-const String spotifyAppRemotePath = 'android/spotify-app-remote/spotify-app-remote-release-0.8.0.aar';
-const String spotifyAuthPath = 'android/spotify-auth/spotify-auth-release-2.1.0.aar';
+const String spotifyAppRemotePath =
+    'android/spotify-app-remote/spotify-app-remote-release-0.8.0.aar';
+const String spotifyAuthPath =
+    'android/spotify-auth/spotify-auth-release-2.1.0.aar';
 
-const String spotifyAppRemoteGradlePath = 'android/spotify-app-remote/build.gradle';
+const String spotifyAppRemoteGradlePath =
+    'android/spotify-app-remote/build.gradle';
 const String spotifyAuthGradlePath = 'android/spotify-auth/build.gradle';
 
+//todo add manıfest placeholders
 Future<void> main(List<String> args) async {
   print('🎵 Initializing Spotikit Android setup...\n');
 
@@ -36,46 +41,38 @@ Future<void> main(List<String> args) async {
       );
     }
 
-
     await checkDirectories();
 
-    await downloadFile(
-      _spotifyAppRemoteUrl,
-      spotifyAppRemotePath,
-    );
-    await downloadFile(
-      _spotifyAuthUrl,
-      spotifyAuthPath,
-    );
+    await downloadFile(_spotifyAppRemoteUrl, spotifyAppRemotePath);
+    await downloadFile(_spotifyAuthUrl, spotifyAuthPath);
 
     await createGradle();
     await prependSettingsGradle();
 
     print('\n✅ Spotikit Android initialization completed successfully!');
+    exit(0);
   } catch (e) {
     print('❌ Error: $e');
     exit(1);
   }
 }
 
-
-
 Future<void> downloadFile(String url, String targetPath) async {
-  print('⬇️  Downloading ${path.basename(targetPath)}...');
+  print('⬇️  Downloading $url ...');
 
   try {
     final response = await http.get(Uri.parse(url));
     if (response.statusCode == 200) {
       final file = File(targetPath);
       await file.writeAsBytes(response.bodyBytes);
-      print('✅ Downloaded ${path.basename(targetPath)}');
+      print('✅ Downloaded $url');
     } else {
       throw Exception(
         'Failed to download $url (Status: ${response.statusCode})',
       );
     }
   } catch (e) {
-    throw Exception('Failed to download ${path.basename(targetPath)}: $e');
+    throw Exception('Failed to download $url: $e');
   }
 }
 
@@ -97,7 +94,7 @@ Future<void> createGradle() async {
   }
 }
 
-Future<void> checkDirectories() async{
+Future<void> checkDirectories() async {
   final appRemoteDir = Directory('android/spotify-app-remote');
   final authDir = Directory('android/spotify-auth');
   if (!await appRemoteDir.exists()) {
@@ -125,17 +122,20 @@ Future<void> prependSettingsGradle() async {
   }
 
   if (file == null) {
-    throw Exception('⚠️ Neither settings.gradle nor settings.gradle.kts exists.');
+    throw Exception(
+      '⚠️ Neither settings.gradle nor settings.gradle.kts exists.',
+    );
   }
 
   final linesToAdd = [
     'include(":spotify-app-remote")',
-    'include(":spotify-auth")'
+    'include(":spotify-auth")',
   ];
 
   final existingLines = await file.readAsLines();
 
-  bool alreadyPrepended = existingLines.length >= 2 &&
+  bool alreadyPrepended =
+      existingLines.length >= 2 &&
       existingLines[0].trim() == linesToAdd[0] &&
       existingLines[1].trim() == linesToAdd[1];
 
@@ -150,8 +150,3 @@ Future<void> prependSettingsGradle() async {
 
   print('✅ Prepended Spotify includes to ${file.path}');
 }
-
-
-
-
-
