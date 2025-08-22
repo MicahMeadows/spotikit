@@ -7,7 +7,7 @@ import 'package:spotikit/log/spotikit_log.dart';
 import 'api/spotify_api.dart';
 import 'const/methods.dart';
 import 'models/auth_state.dart';
-import 'models/sealed/track_result.dart';
+import 'models/spotify/spotify_track.dart';
 import 'models/spotify/spotify_track_info.dart';
 
 class Spotikit {
@@ -174,31 +174,42 @@ class Spotikit {
     }
   }
 
-  static Future<TrackResult?> getPlayingTrackInfo({bool full = false}) async {
+  static Future<SpotifyTrackInfo?> getPlayingTrackInfo() async {
     try {
       final Map? result = await _channel.invokeMapMethod(Methods.getTrackInfo);
       if (result == null) return null;
+
       final trackInfo = SpotifyTrackInfo.fromMap(result);
-      if (!full) {
-        return TrackInfoResult(trackInfo);
-      }
+      return trackInfo;
+    } catch (e) {
+      SpotikitLog.error("Error retrieving basic track info: $e");
+      return null;
+    }
+  }
+
+  static Future<SpotifyTrack?> getPlayingTrackFull() async {
+    try {
+      final Map? result = await _channel.invokeMapMethod(Methods.getTrackInfo);
+      if (result == null) return null;
+
+      final trackInfo = SpotifyTrackInfo.fromMap(result);
       final id = trackInfo.uri.split(":").last;
 
       final String? accessToken = await getAccessToken();
       if (accessToken == null) {
-        SpotikitLog.error(
-          "Access token is null, cannot fetch full track info.",
-        );
+        SpotikitLog.error("Access token is null, cannot fetch full track info.");
         return null;
       }
-      final track = await _api.getTrackById(id: id, accessToken: accessToken);
+
+      final SpotifyTrack? track = await _api.getTrackById(id: id, accessToken: accessToken);
       if (track == null) {
         SpotikitLog.error("Failed to fetch full track info from Spotify API.");
         return null;
       }
-      return SpotifyTrackResult(track);
+
+      return track;
     } catch (e) {
-      SpotikitLog.error("Error retrieving track info: $e");
+      SpotikitLog.error("Error retrieving full track info: $e");
       return null;
     }
   }

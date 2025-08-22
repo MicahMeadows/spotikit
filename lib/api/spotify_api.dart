@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:spotikit/models/spotify/spotify_track.dart';
 
-const String _baseUrl = "https://api.spotify.com/v1";
+const String _baseUrl = "https://api.spotify.com/v1/";
 
 class SpotifyApi {
   final Dio _dio;
