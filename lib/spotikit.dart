@@ -9,6 +9,7 @@ import 'const/methods.dart';
 import 'models/auth_state.dart';
 import 'models/spotify/spotify_track.dart';
 import 'models/spotify/spotify_track_info.dart';
+import 'models/spotify/playback_state.dart';
 
 class Spotikit {
   static final SpotifyApi _api = SpotifyApi();
@@ -18,8 +19,12 @@ class Spotikit {
 
   static final StreamController<AuthState> _authController =
       StreamController<AuthState>.broadcast();
+  static final StreamController<SpotifyPlaybackState> _playbackController =
+      StreamController<SpotifyPlaybackState>.broadcast();
 
   static Stream<AuthState> get onAuthStateChanged => _authController.stream;
+  static Stream<SpotifyPlaybackState> get onPlaybackStateChanged =>
+      _playbackController.stream;
 
   static bool _isListenerInitialized = false;
 
@@ -88,6 +93,15 @@ class Spotikit {
           _authController.add(AuthCancelled());
         } else {
           _authController.add(AuthFailure(error, args['message'] as String?));
+        }
+        break;
+      case 'playbackState':
+        try {
+          final map = call.arguments as Map<dynamic, dynamic>;
+          final state = SpotifyPlaybackState.fromMap(map);
+          _playbackController.add(state);
+        } catch (e) {
+          SpotikitLog.error('Error parsing playback state: $e');
         }
         break;
       default:
@@ -197,11 +211,16 @@ class Spotikit {
 
       final String? accessToken = await getAccessToken();
       if (accessToken == null) {
-        SpotikitLog.error("Access token is null, cannot fetch full track info.");
+        SpotikitLog.error(
+          "Access token is null, cannot fetch full track info.",
+        );
         return null;
       }
 
-      final SpotifyTrack? track = await _api.getTrackById(id: id, accessToken: accessToken);
+      final SpotifyTrack? track = await _api.getTrackById(
+        id: id,
+        accessToken: accessToken,
+      );
       if (track == null) {
         SpotikitLog.error("Failed to fetch full track info from Spotify API.");
         return null;
@@ -274,6 +293,30 @@ class Spotikit {
       });
     } catch (e) {
       SpotikitLog.error("Error during skipBackward: $e");
+    }
+  }
+
+  static Future<void> playSong({required String query}) async {
+    try {
+      final String? accessToken = await getAccessToken();
+      if (accessToken == null) {
+        SpotikitLog.error("Access token is null, cannot search for song.");
+        return;
+      }
+
+      final searchResult = await _api.searchAndGetFirstTrackId(
+        query: query,
+        accessToken: accessToken,
+      );
+
+      if (searchResult == null) {
+        SpotikitLog.error("No track found for query: $query");
+        return;
+      }
+
+      await playUri(spotifyUri: "spotify:track:$searchResult");
+    } catch (e) {
+      SpotikitLog.error("Error during playSong: $e");
     }
   }
 }

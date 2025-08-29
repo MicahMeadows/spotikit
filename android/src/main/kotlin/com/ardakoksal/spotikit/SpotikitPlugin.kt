@@ -12,6 +12,8 @@ import com.spotify.android.appremote.api.SpotifyAppRemote
 import com.spotify.sdk.android.auth.AuthorizationClient
 import com.spotify.sdk.android.auth.AuthorizationRequest
 import com.spotify.sdk.android.auth.AuthorizationResponse
+import com.spotify.protocol.client.Subscription
+import com.spotify.protocol.types.PlayerState
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -66,6 +68,9 @@ class SpotikitPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, PluginRe
   // Coroutine scope for background tasks
   private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
+  // Player state subscription
+  private var playerStateSubscription: Subscription<PlayerState>? = null
+
   // ---------------------------------------------------------------------------------
   // FlutterPlugin Lifecycle
   // ---------------------------------------------------------------------------------
@@ -79,6 +84,8 @@ class SpotikitPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, PluginRe
   }
 
   override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+    playerStateSubscription?.cancel()
+    playerStateSubscription = null
     channel.setMethodCallHandler(null)
     coroutineScope.cancel()
     spotifyAppRemote?.let {
@@ -93,6 +100,8 @@ class SpotikitPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, PluginRe
   }
 
   override fun onDetachedFromActivity() {
+    playerStateSubscription?.cancel()
+    playerStateSubscription = null
     spotifyAppRemote?.let {
       if (it.isConnected) SpotifyAppRemote.disconnect(it)
     }
@@ -202,6 +211,7 @@ class SpotikitPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, PluginRe
       override fun onConnected(appRemote: SpotifyAppRemote) {
         spotifyAppRemote = appRemote
         Log.d(TAG, "Spotify App Remote connected.")
+        subscribeToPlayerState(appRemote)
         result.success("Connected")
       }
       override fun onFailure(throwable: Throwable) {
@@ -210,6 +220,34 @@ class SpotikitPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, PluginRe
       }
     }
     SpotifyAppRemote.connect(context, connectionParams, connectionListener)
+  }
+
+  private fun subscribeToPlayerState(appRemote: SpotifyAppRemote) {
+    // Cancel existing subscription if any
+    playerStateSubscription?.cancel()
+    playerStateSubscription = appRemote.playerApi.subscribeToPlayerState()
+      .setEventCallback { playerState ->
+        val track = playerState.track
+        if (track != null) {
+          try {
+            val map = hashMapOf(
+              "uri" to track.uri,
+              "name" to track.name,
+              "artist" to track.artist.name,
+              "isPaused" to playerState.isPaused,
+              "positionMs" to playerState.playbackPosition.toInt(),
+              "durationMs" to track.duration.toInt(),
+              "imageUri" to track.imageUri?.raw
+            )
+            channel.invokeMethod("playbackState", map)
+          } catch (e: Exception) {
+            Log.e(TAG, "Error while mapping playback state", e)
+          }
+        }
+      }
+      .setErrorCallback { t ->
+        Log.e(TAG, "Player state subscription error", t)
+      }
   }
 
   private fun authenticateSpotify(result: Result) {
@@ -416,6 +454,8 @@ class SpotikitPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, PluginRe
   }
 
   private fun disconnect(result: Result) {
+    playerStateSubscription?.cancel()
+    playerStateSubscription = null
     spotifyAppRemote?.let {
       if (it.isConnected) {
         SpotifyAppRemote.disconnect(it)
