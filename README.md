@@ -5,56 +5,60 @@ Flutter plugin for integrating Spotify on Android using both the Spotify App Rem
 > Status: Experimental (v0.0.24). Android only for now. iOS support planned.
 
 ---
-## Highlights
-- 🔐 OAuth (Authorization Code) flow with refresh token persistence
-- 📡 Connect & control Spotify playback (play, pause, resume, previous, next, seek, skip forward/backward)
-- 🎶 Search helper (play the first track result by query)
-- 🛰 Realtime playback state stream (track, artist, progress, paused state, image URI)
-- 📦 Fetch full track metadata via Web API (popularity, album images, release date, explicit flag, etc.)
-- 🛡 Centralized logging helper
-- ♻ Token refresh handling
+## Highlights (TL;DR)
+- Auth (Authorization Code + refresh)
+- Play / pause / resume / next / previous / seek / skip +/- seconds
+- Realtime playback state stream (track, artist, progress, paused, image)
+- One‑shot search & play first result
+- Full track metadata via Web API
+- Centralized logging & auto token refresh
 
 ---
 ## Platform Support
 | Platform | Status | Notes |
 |----------|--------|-------|
-| Android  | ✅     | Uses Spotify App Remote SDK + Auth + Web API |
-| iOS      | ⏳     | Planned (API surface designed to be extendable) |
-| Web/Desktop | ❌ | Not currently targeted |
+| Android  | ✅     | Uses App Remote SDK + Web API |
+| iOS      | ⏳     | Planned |
+| Web/Desktop | ❌ | Not targeted |
 
 ---
 ## Prerequisites
-1. A Spotify Developer account: https://developer.spotify.com/dashboard
-2. Create an app & note `Client ID` and (if needed) `Client Secret`.
-3. Add a redirect URI in the Spotify dashboard (e.g. `your.app://callback`).
-4. Add that same redirect URI inside your Android project manifest intent filter if you customize it.
+1. Spotify Developer account: https://developer.spotify.com/dashboard
+2. Create an app → copy Client ID (and Client Secret if using backend‑less flow here).
+3. Add redirect URI (e.g. `your.app://callback`).
+4. Use the SAME redirect URI in your AndroidManifest intent filter if you customize it.
 
-Scopes currently requested by default (can be overridden):
+Scopes requested by default (override if you want fewer):
 ```
 user-read-playback-state user-modify-playback-state user-read-currently-playing app-remote-control streaming playlist-read-private playlist-read-collaborative playlist-modify-public playlist-modify-private user-library-modify user-library-read user-top-read user-read-playback-position user-read-recently-played user-follow-read user-follow-modify user-read-email user-read-private
 ```
-Trim these to the minimum your use-case requires (principle of least privilege).
+Trim to the minimum you actually need.
 
 ---
-## Installation
-Add to `pubspec.yaml`:
-```
+## Installation & REQUIRED Android Init
+Quick steps:
+1. Add to `pubspec.yaml`:
+   ```yaml
 dependencies:
   spotikit: ^0.0.24
-```
-
-Run:
-```
+   ```
+2. Fetch packages:
+   ```
 flutter pub get
-```
+   ```
+3. IMPORTANT (one‑time per clone / after cleaning android dir): run the init script so the Spotify AARs are downloaded & Gradle includes are inserted at the top of `android/settings.gradle`:
+   ```
+dart run spotikit:android_init
+   ```
+   If you skip this, Gradle will fail because the required `spotify-app-remote` and `spotify-auth` modules won’t exist.
+4. (Optional) If Gradle metadata gets messy or you want to re‑download AARs, clean with:
+   ```
+dart run spotikit:android_clean && dart run spotikit:android_init
+   ```
+5. Ensure `minSdkVersion >= 21`.
 
----
-## Android Setup
-(Gradle plugin normally auto‑configures via the Flutter plugin system.)
-
-Ensure minSdk >= 21 (Spotify SDK requirement). If you need custom redirect URI handling, add an intent filter:
+Intent filter (only if you changed the default scheme/host):
 ```xml
-<!-- android/app/src/main/AndroidManifest.xml -->
 <intent-filter>
   <action android:name="android.intent.action.VIEW" />
   <category android:name="android.intent.category.DEFAULT" />
@@ -62,7 +66,6 @@ Ensure minSdk >= 21 (Spotify SDK requirement). If you need custom redirect URI h
   <data android:scheme="your.app" android:host="callback" />
 </intent-filter>
 ```
-Match `your.app://callback` with the redirect URI you registered in the Spotify dashboard.
 
 ---
 ## Quick Start
@@ -77,18 +80,12 @@ void main() async {
     redirectUri: 'your.app://callback',
   );
 
-  // Launch Spotify auth UI
   await Spotikit.authenticateSpotify();
-
-  // After auth success (listen to stream), connect to App Remote
   await Spotikit.connectToSpotify();
-
-  // Play a track
   await Spotikit.playUri(spotifyUri: 'spotify:track:11dFghVXANMlKmJXsNCbNl');
 
-  // Subscribe to playback updates
   Spotikit.onPlaybackStateChanged.listen((state) {
-    print('Now playing: ${state.name} by ${state.artist} @ ${(state.progress * 100).toStringAsFixed(1)}%');
+    print('Now playing: ${state.name} by ${state.artist} ${(state.progress * 100).toStringAsFixed(1)}%');
   });
 }
 ```
@@ -113,95 +110,77 @@ Spotikit.onAuthStateChanged.listen((auth) {
 
 ---
 ## Playback State Stream
-Every active track change or playback status update is pushed:
 ```dart
 final sub = Spotikit.onPlaybackStateChanged.listen((s) {
   print('Track: ${s.name} | Paused: ${s.isPaused} | Position: ${s.positionMs}/${s.durationMs}');
 });
 ```
-Model fields:
-- `uri`, `name`, `artist`
-- `isPaused`
-- `positionMs`, `durationMs`
-- `imageUri` (raw Spotify App Remote image URI)
-- Helpers: `progress`, `id`
+Fields: `uri`, `name`, `artist`, `isPaused`, `positionMs`, `durationMs`, `imageUri`, helpers: `progress`, `id`.
 
 ---
 ## Core Control APIs
 | Action | Method |
 |--------|--------|
 | Play by URI | `Spotikit.playUri(spotifyUri: ...)` |
-| Pause | `Spotikit.pause()` |
-| Resume | `Spotikit.resume()` |
-| Next | `Spotikit.skipTrack()` |
-| Previous | `Spotikit.previousTrack()` |
-| Seek absolute | `Spotikit.seekTo(positionMs: ...)` |
-| Skip fwd/back | `Spotikit.skipForward(seconds: 5)` / `skipBackward(seconds: 5)` |
-| Currently playing (basic) | `Spotikit.getPlayingTrackInfo()` |
-| Full metadata | `Spotikit.getPlayingTrackFull()` |
-| Search & play first | `Spotikit.playSong(query: '...')` |
-| Is playing? | `Spotikit.isPlaying()` |
-| Disconnect | `Spotikit.disconnect()` |
-| Logout (clear tokens) | `Spotikit.logout()` |
+| Pause / Resume | `pause()` / `resume()` |
+| Next / Previous | `skipTrack()` / `previousTrack()` |
+| Seek absolute | `seekTo(positionMs: ...)` |
+| Skip fwd/back seconds | `skipForward(seconds: ...)` / `skipBackward(seconds: ...)` |
+| Playing (basic) | `getPlayingTrackInfo()` |
+| Full metadata | `getPlayingTrackFull()` |
+| Search & play first | `playSong(query: ...)` |
+| Is playing? | `isPlaying()` |
+| Disconnect | `disconnect()` |
+| Logout (clear tokens) | `logout()` |
 
 ---
 ## Example App
-A full demo lives under `example/` illustrating:
-- Init + auth + connect lifecycle
-- Manual URI playback
-- Search & auto-play first result
-- Realtime progress slider seeking
-- Skip forward/backwards convenience
-
-Run it:
+Located in `example/` (shows auth → connect → playback + search + progress slider). Run:
 ```
 cd example
 flutter run
 ```
-(Remember to fill real credentials in `example/lib/main.dart`).
+Add real credentials in `example/lib/main.dart`.
 
 ---
 ## Token Handling
-- Authorization Code flow exchanges code for access & refresh tokens
-- Tokens cached in SharedPreferences (Android)
-- Refresh triggered automatically when `getAccessToken` is requested and expired
-- (Future) proactive refresh + error surfaced via auth stream
+- Authorization Code flow
+- Access + refresh cached (SharedPreferences)
+- Automatic refresh when expired on demand
+- Future: proactive refresh events
 
-Security Tips:
-- Do NOT commit secrets
-- Use `--dart-define` or env injection for build pipelines
-- Consider a lightweight backend proxy for token exchange if distributing public apps
+Security:
+- Never commit secrets
+- Prefer `--dart-define` for CI/builds
+- Consider backend proxy for token exchange in production
 
 ---
 ## Error Handling
-Native errors propagate as Flutter `PlatformException` via invoked methods; plugin logs details through `SpotikitLog`. Extendable future plan: unify under a strong `SpotikitException` wrapper.
+Native issues surface as `PlatformException`. Future: richer `SpotikitException` wrapper.
 
 ---
 ## Roadmap
-- iOS implementation parity
-- Shuffle / repeat mode controls
-- Queue operations (add, view)
-- Volume & context metadata
-- EventChannel migration for high‑frequency playback updates
-- Additional Web API wrappers (playlists, user profile, library)
-- Proactive token refresh & recovery events
-- Track change filtered stream & last known playback cache
+- iOS
+- Shuffle / repeat
+- Queue ops
+- Volume, context metadata
+- EventChannel optimization
+- More Web API (playlists, library, user)
+- Proactive token refresh
+- Filtered track change stream + caching
 
 ---
 ## Contributing
-PRs welcome. Suggested steps:
-1. Fork & clone
-2. Create feature branch
-3. Implement + add/update example usage & docs
-4. Run `flutter format .` & ensure analyzer passes
-5. Submit PR describing change & testing notes
+1. Fork / branch
+2. Implement + update example/docs
+3. `flutter format .` & fix analyzer warnings
+4. PR with description + test notes
 
 ---
-## Development Scripts
-The repo contains helper executables (see `pubspec.yaml`):
+## Dev Scripts (repeat: init is REQUIRED) ✅
 ```
-dart run spotikit:android_init
-dart run spotikit:android_clean
+dart run spotikit:android_init   # REQUIRED after adding plugin / fresh clone / cleaning android
+dart run spotikit:android_clean  # Optional helper (then rerun android_init)
 ```
 
 ---
@@ -210,10 +189,10 @@ MIT © 2025 spotikit contributors
 
 ---
 ## Attribution
-Uses Spotify App Remote SDK & Web API. This project is not affiliated with or endorsed by Spotify.
+Uses Spotify App Remote SDK & Web API. Not affiliated with or endorsed by Spotify.
 
 ---
 ## Support
-File issues / feature requests: https://github.com/ArdaKoksall/spotikit/issues
+Issues / ideas: https://github.com/ArdaKoksall/spotikit/issues
 
 Enjoy building with Spotikit! 🎧
